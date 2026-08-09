@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b3d31" />
+    <meta name="description" content="The Barn — bar inventory, daily counts, deliveries, and event consumption reporting. Works offline on any phone." />
+    <title>The Barn · Bar Inventory</title>
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="The Barn" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="brand" data-page="home" aria-label="Go to dashboard">
+          <span class="brand-mark" aria-hidden="true">B</span>
+          <span><b>The Barn</b><small>Bar operations</small></span>
+        </button>
+        <button class="top-action" data-page="settings" aria-label="Open backup and settings">•••</button>
+      </header>
+
+      <main>
+        <!-- ------------------------------ HOME ------------------------------ -->
+        <section class="page active" id="home" aria-labelledby="home-title">
+          <article class="welcome-card">
+            <p class="eyebrow" id="welcome-date">TODAY</p>
+            <h1 id="home-title">Run a tighter bar,<br /><em>one count at a time.</em></h1>
+            <p>Every ounce poured, every bottle received, every event accounted for — ready before doors open.</p>
+            <div class="welcome-actions">
+              <button class="button cream" data-page="count">Begin daily count <span aria-hidden="true">→</span></button>
+              <button class="button clear" data-action="restock">Record delivery</button>
+            </div>
+          </article>
+
+          <div class="section-heading">
+            <div><p class="eyebrow">Live picture</p><h2>Today at the bar</h2></div>
+            <button class="text-button" data-page="reports">Reports <span aria-hidden="true">→</span></button>
+          </div>
+          <div class="stat-grid" id="home-stats"></div>
+
+          <div id="attention-slot"></div>
+
+          <div class="section-heading">
+            <div><p class="eyebrow">Audit trail</p><h2>Latest activity</h2></div>
+            <button class="text-button" data-page="activity">All activity <span aria-hidden="true">→</span></button>
+          </div>
+          <div class="timeline" id="recent-activity"></div>
+        </section>
+
+        <!-- ---------------------------- INVENTORY --------------------------- -->
+        <section class="page" id="inventory" aria-labelledby="inventory-title">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Live stock</p>
+              <h1 id="inventory-title">Inventory</h1>
+              <p id="inventory-subtitle"></p>
+            </div>
+            <button class="round-button" data-action="add-item" aria-label="Add inventory item">+</button>
+          </div>
+
+          <div class="toolbar">
+            <label class="search">
+              <span aria-hidden="true">⌕</span>
+              <input id="inventory-search" type="search" placeholder="Search inventory" aria-label="Search inventory" autocomplete="off" />
+            </label>
+            <button class="filter-control" id="low-stock-toggle" aria-pressed="false">Low stock</button>
+          </div>
+
+          <div class="chips" id="category-chips" role="group" aria-label="Filter by category"></div>
+          <p class="list-note">Tap a product to restock it, adjust it, or edit its details.</p>
+          <div id="inventory-list"></div>
+        </section>
+
+        <!-- ------------------------------ COUNT ----------------------------- -->
+        <section class="page" id="count" aria-labelledby="count-title">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Physical count</p>
+              <h1 id="count-title">Daily count</h1>
+              <p>Enter what is physically on hand. The difference becomes usage automatically.</p>
+            </div>
+          </div>
+
+          <div class="count-context">
+            <div class="context-icon" aria-hidden="true">✦</div>
+            <div>
+              <label for="count-event">Count context</label>
+              <select id="count-event"></select>
+            </div>
+            <button class="mini-add" data-action="event" aria-label="Create an event">+</button>
+          </div>
+
+          <div class="count-date">
+            <label for="count-date">Count date</label>
+            <input type="date" id="count-date" />
+          </div>
+
+          <p class="count-hint">Book amount is shown under each product. A lower count records usage; a higher count is logged as a positive adjustment, never negative usage. Leave a line blank to skip it.</p>
+
+          <div class="toolbar">
+            <label class="search">
+              <span aria-hidden="true">⌕</span>
+              <input id="count-search" type="search" placeholder="Jump to a product" aria-label="Search products to count" autocomplete="off" />
+            </label>
+            <button class="filter-control" id="count-prefill" aria-pressed="false">Prefill</button>
+          </div>
+
+          <div class="chips" id="count-chips" role="group" aria-label="Filter count by category"></div>
+
+          <div class="count-progress">
+            <span id="count-progress-label">0 counted</span>
+            <span class="bar"><i id="count-progress-bar" style="width:0%"></i></span>
+            <span id="count-progress-usage">—</span>
+          </div>
+
+          <div class="count-list" id="count-list"></div>
+
+          <div class="sticky-save">
+            <button class="button primary wide" data-action="save-count">Save count &amp; calculate usage <span aria-hidden="true">→</span></button>
+          </div>
+        </section>
+
+        <!-- ----------------------------- REPORTS ---------------------------- -->
+        <section class="page" id="reports" aria-labelledby="reports-title">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Service intelligence</p>
+              <h1 id="reports-title">Reports</h1>
+              <p>Consumption, stock value, and event performance for any date range.</p>
+            </div>
+          </div>
+
+          <div class="report-range">
+            <div class="segmented" id="range-buttons" role="group" aria-label="Report date range">
+              <button data-range="7" class="selected">7 days</button>
+              <button data-range="30">30 days</button>
+              <button data-range="90">90 days</button>
+              <button data-range="custom">Custom</button>
+            </div>
+            <div class="custom-range" id="custom-range">
+              <input type="date" id="report-start" aria-label="Report start date" />
+              <span>to</span>
+              <input type="date" id="report-end" aria-label="Report end date" />
+            </div>
+          </div>
+
+          <div class="report-overview" id="report-overview"></div>
+
+          <article class="report-card">
+            <div class="card-title">
+              <div><p class="eyebrow">Consumption trend</p><h2>Usage over time</h2></div>
+              <span class="muted" id="trend-window"></span>
+            </div>
+            <svg class="chart" id="trend-chart" role="img" aria-label="Daily consumption trend"></svg>
+            <div class="chart-legend" id="chart-legend"></div>
+          </article>
+
+          <div class="report-split">
+            <article class="report-card">
+              <p class="eyebrow">Top products</p>
+              <h2>Most consumed</h2>
+              <div id="top-products"></div>
+            </article>
+            <article class="report-card">
+              <p class="eyebrow">Reorder watch</p>
+              <h2>Low stock</h2>
+              <div id="report-low-list"></div>
+            </article>
+          </div>
+
+          <article class="report-card">
+            <p class="eyebrow">Mix</p>
+            <h2>Consumption by category</h2>
+            <div id="category-report"></div>
+          </article>
+
+          <article class="report-card">
+            <div class="card-title">
+              <div><p class="eyebrow">Event usage</p><h2>Consumption by event</h2></div>
+              <button class="text-button" data-action="event">Add event</button>
+            </div>
+            <div id="event-report-list"></div>
+          </article>
+
+          <div class="modal-actions" style="grid-template-columns:1fr 1fr">
+            <button class="button outline" data-action="export-report">Export CSV</button>
+            <button class="button outline" data-action="print-report">Print / PDF</button>
+          </div>
+        </section>
+
+        <!-- -------------------------------- DNI ------------------------------ -->
+        <section class="page" id="dni" aria-labelledby="dni-title">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Do not inventory</p>
+              <h1 id="dni-title">DNI bank</h1>
+              <p>Product written off from official inventory and cost during a strong period — banked here to pour or comp later at no additional cost.</p>
+            </div>
+            <button class="round-button" data-action="write-off" aria-label="Write off product">+</button>
+          </div>
+
+          <div class="stat-grid" id="dni-stats" style="margin-bottom:14px"></div>
+
+          <div class="toolbar">
+            <label class="search">
+              <span aria-hidden="true">⌕</span>
+              <input id="dni-search" type="search" placeholder="Search products" aria-label="Search products" autocomplete="off" />
+            </label>
+          </div>
+          <div class="chips" id="dni-chips" role="group" aria-label="Filter by category"></div>
+          <p class="list-note">Tap a product to write off more or use what's banked.</p>
+          <div id="dni-list"></div>
+        </section>
+
+        <!-- ----------------------------- ACTIVITY --------------------------- -->
+        <section class="page" id="activity" aria-labelledby="activity-title">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Complete history</p>
+              <h1 id="activity-title">Activity</h1>
+              <p>Counts, restocks, adjustments, and event usage — every change is retained.</p>
+            </div>
+          </div>
+          <div class="chips" id="activity-filters" role="group" aria-label="Filter activity">
+            <button class="chip active" data-activity-filter="all">All</button>
+            <button class="chip" data-activity-filter="count">Counts</button>
+            <button class="chip" data-activity-filter="restock">Restocks</button>
+            <button class="chip" data-activity-filter="adjustment">Adjustments</button>
+            <button class="chip" data-activity-filter="dni">DNI</button>
+            <button class="chip" data-activity-filter="item">Item changes</button>
+          </div>
+          <p class="list-note">Tap an entry to see the products it touched.</p>
+          <div class="timeline" id="activity-list"></div>
+        </section>
+
+        <!-- ----------------------------- SETTINGS --------------------------- -->
+        <section class="page" id="settings" aria-labelledby="settings-title">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Data &amp; device</p>
+              <h1 id="settings-title">Backup &amp; settings</h1>
+              <p>Data is saved on this device after every action. Export regularly to keep an independent copy.</p>
+            </div>
+          </div>
+
+          <div class="stat-grid" id="settings-stats" style="margin-bottom:14px"></div>
+
+          <article class="setting-card">
+            <div class="setting-icon" aria-hidden="true">↓</div>
+            <div><strong>Export a full backup</strong><p>Download all inventory, events, counts, and activity as one JSON file.</p></div>
+            <button class="button outline compact" data-action="export">Export</button>
+          </article>
+
+          <article class="setting-card">
+            <div class="setting-icon" aria-hidden="true">↑</div>
+            <div><strong>Restore a backup</strong><p>Replace this device's data with a Barn backup file.</p></div>
+            <label class="button outline compact" for="import-file" tabindex="0" role="button">Import</label>
+            <input id="import-file" type="file" accept="application/json,.json" hidden />
+          </article>
+
+          <article class="setting-card">
+            <div class="setting-icon" aria-hidden="true">⤢</div>
+            <div><strong>Start a new period</strong><p>Set beginning inventory on every line to today's on-hand figure.</p></div>
+            <button class="button outline compact" data-action="rebase">Rebase</button>
+          </article>
+
+          <article class="install-tip">
+            <span aria-hidden="true">⌁</span>
+            <div><strong>Install The Barn on your phone</strong><p id="install-guidance">Add it to your home screen for full-screen, offline access.</p></div>
+            <button class="text-button" data-action="install">Install</button>
+          </article>
+
+          <article class="setting-card">
+            <div class="setting-icon warn" aria-hidden="true">⟲</div>
+            <div><strong>Reset to sample data</strong><p>Wipes local data and reloads the demo inventory. Export first.</p></div>
+            <button class="button danger compact" data-action="reset">Reset</button>
+          </article>
+
+          <article class="setting-note">
+            <strong>Local-first by design</strong>
+            <p>No Microsoft account, licence, or Copilot dependency. The app runs offline after first load and stores everything in this browser. Inventory rules live in <code>src/core.mjs</code> and storage is isolated behind an adapter in <code>src/storage.mjs</code>, so a shared multi-device backend can be added later without touching the screens.</p>
+            <p style="margin-top:8px" id="storage-note"></p>
+          </article>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Primary">
+        <button class="nav-item active" data-page="home"><span aria-hidden="true">⌂</span>Home</button>
+        <button class="nav-item" data-page="inventory"><span aria-hidden="true">▤</span>Stock</button>
+        <button class="nav-item count-button" data-page="count"><span aria-hidden="true">＋</span>Count</button>
+        <button class="nav-item" data-page="reports"><span aria-hidden="true">▥</span>Reports</button>
+        <button class="nav-item" data-page="dni"><span aria-hidden="true">⊘</span>DNI</button>
+        <button class="nav-item" data-page="activity"><span aria-hidden="true">◷</span>History</button>
+      </nav>
+    </div>
+
+    <dialog id="modal" aria-labelledby="modal-title">
+      <form id="modal-form" novalidate>
+        <div class="modal-head">
+          <div><p class="eyebrow" id="modal-kicker">Inventory</p><h2 id="modal-title">Add item</h2></div>
+          <button type="button" class="close-button" data-action="close-modal" aria-label="Close">×</button>
+        </div>
+        <div id="modal-fields"></div>
+        <p id="form-error" class="form-error" role="alert"></p>
+        <div class="modal-actions" id="modal-actions">
+          <button class="button outline" type="button" data-action="close-modal">Cancel</button>
+          <button class="button primary" id="modal-save" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

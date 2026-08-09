@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="The Barn">
+  <rect width="512" height="512" rx="112" fill="#1b3d31"/>
+  <rect x="16" y="16" width="480" height="480" rx="98" fill="none" stroke="#2c584a" stroke-width="6"/>
+  <path d="M144 396V228l112-92 112 92v168h-64V268H208v128z" fill="#f6f3ec"/>
+  <path d="M120 232 256 120l136 112" fill="none" stroke="#b0842f" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="232" y="300" width="48" height="96" rx="10" fill="#1b3d31"/>
+</svg>
