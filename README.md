@@ -67,14 +67,19 @@ To install it on a real phone:
 
 The in-app **Settings → Install** button triggers the native install prompt when the browser supports it, and shows the right manual instructions otherwise.
 
-## Data & backups
+## Data, sync & backups
 
-Everything is stored in the browser's `localStorage` on the device you're using — there is no server and nothing leaves the device. That means:
+This deployment shares one live inventory across every device that opens it, via a small Firestore-backed sync layer (`src/firestore-sync.mjs`):
 
-- Data survives refreshes and browser restarts, but is tied to one browser on one device.
-- **Export a backup regularly** (Settings → Export) — it's a single JSON file with every product, event, and history entry.
-- **Import** that file (Settings → Import) on the same or a different device to restore it.
-- If a browser's private/incognito mode blocks `localStorage`, the app falls back to in-memory storage automatically and shows a warning banner in Settings — export before closing the tab in that case.
+- Every device that has the app open sees changes from any other device automatically, with no login and no manual refresh.
+- Each device also keeps a local `localStorage` cache (`src/storage.mjs`), so the app still works — you can view and edit — if the connection drops. It reconciles with the shared copy once back online.
+- Settings shows live sync status ("Synced live" / "Working locally only") so it's obvious when a device has fallen offline.
+- Access is open by design (matching the venue's choice not to gate it behind a PIN) — the Firestore security rules (`firestore.rules`) expose only the `/barn/**` path this app uses, nothing else in the project.
+- **Export a backup regularly anyway** (Settings → Export) — it's a single JSON file with every product, event, and history entry, useful as an independent copy or to migrate to a different backend later.
+- **Import** (Settings → Import) replaces the *shared* inventory for every connected device — the app confirms before doing this.
+- If `localStorage` is blocked (e.g. strict private-browsing mode), the app falls back to in-memory storage for that session and shows a warning in Settings.
+
+To run this app as a fully local/offline-only tool instead (no shared backend), delete the `subscribeShared`/`writeShared` calls in `src/app.js`'s `boot()`/`save()` — `src/storage.mjs`'s local adapter keeps working standalone.
 
 ## Running the tests
 
@@ -104,5 +109,6 @@ The visual design intentionally avoids a generic admin-dashboard look: a warm of
 ## What's not included (and why)
 
 - No Microsoft/Copilot/Power Apps dependency of any kind.
-- No bundler or framework — the app is native ES modules, loaded directly by the browser, so there's nothing to build and nothing to keep updated.
-- No backend by default — `src/storage.mjs` isolates persistence behind an adapter specifically so a shared backend can be dropped in later without touching any screen or business rule.
+- No bundler or framework — the app is native ES modules, loaded directly by the browser (Firebase's SDK loads the same way, from a CDN, only when sync is used), so there's nothing to build and nothing to keep updated.
+- No required backend for the *code* — `src/storage.mjs` isolates persistence behind an adapter, and `src/firestore-sync.mjs` is an optional layer on top of it. This deployment happens to use that layer for live shared sync (see above), but the app runs fine local-only with it removed.
+- No accounts or login — access control for this shared deployment is intentionally simple (open, scoped to one Firestore path); add real auth in `firestore.rules` if that stops being enough (e.g. the venue grows past one trusted device group).

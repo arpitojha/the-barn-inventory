@@ -254,6 +254,11 @@
 
           <div class="stat-grid" id="settings-stats" style="margin-bottom:14px"></div>
 
+          <article class="setting-card" id="sync-card">
+            <div class="setting-icon" aria-hidden="true">⇄</div>
+            <div><strong>Connecting to shared inventory…</strong><p>One moment — linking this device to the shared bank.</p></div>
+          </article>
+
           <article class="setting-card">
             <div class="setting-icon" aria-hidden="true">↓</div>
             <div><strong>Export a full backup</strong><p>Download all inventory, events, counts, and activity as one JSON file.</p></div>
@@ -262,7 +267,7 @@
 
           <article class="setting-card">
             <div class="setting-icon" aria-hidden="true">↑</div>
-            <div><strong>Restore a backup</strong><p>Replace this device's data with a Barn backup file.</p></div>
+            <div><strong>Restore a backup</strong><p>Replace the shared inventory with a Barn backup file — affects every connected device.</p></div>
             <label class="button outline compact" for="import-file" tabindex="0" role="button">Import</label>
             <input id="import-file" type="file" accept="application/json,.json" hidden />
           </article>
@@ -281,13 +286,13 @@
 
           <article class="setting-card">
             <div class="setting-icon warn" aria-hidden="true">⟲</div>
-            <div><strong>Reset to sample data</strong><p>Wipes local data and reloads the demo inventory. Export first.</p></div>
+            <div><strong>Reset to sample data</strong><p>Wipes the shared inventory for every connected device and reloads the demo data. Export first.</p></div>
             <button class="button danger compact" data-action="reset">Reset</button>
           </article>
 
           <article class="setting-note">
-            <strong>Local-first by design</strong>
-            <p>No Microsoft account, licence, or Copilot dependency. The app runs offline after first load and stores everything in this browser. Inventory rules live in <code>src/core.mjs</code> and storage is isolated behind an adapter in <code>src/storage.mjs</code>, so a shared multi-device backend can be added later without touching the screens.</p>
+            <strong>No Microsoft dependency</strong>
+            <p>No Microsoft account, licence, or Copilot dependency. Every device that opens this app shares one live inventory — changes sync automatically, with no login. This device also keeps a local cache, so it keeps working (view and edit) if the connection drops, and catches up once it's back. Inventory rules live in <code>src/core.mjs</code>, storage in <code>src/storage.mjs</code>, and shared sync in <code>src/firestore-sync.mjs</code> — each isolated so any one of them can be swapped out later.</p>
             <p style="margin-top:8px" id="storage-note"></p>
           </article>
         </section>

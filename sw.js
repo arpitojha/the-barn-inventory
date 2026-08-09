@@ -16,6 +16,7 @@ const SHELL = [
   './src/core.mjs',
   './src/storage.mjs',
   './src/seed.mjs',
+  './src/firestore-sync.mjs',
   './icons/icon.svg',
 ];
 

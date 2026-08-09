@@ -18,6 +18,7 @@ import {
 } from './core.mjs';
 import { createRepository, defaultAdapter } from './storage.mjs';
 import { buildSeedData } from './seed.mjs';
+import { subscribeShared, writeShared } from './firestore-sync.mjs';
 
 /* ------------------------------------------------------------------ *
  * Bootstrap
@@ -56,13 +57,76 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
 ));
 
-const save = () => repo.save({
-  items: state.items,
-  events: state.events,
-  history: state.history,
-  settings: state.settings,
-  draft: state.draft,
-});
+/**
+ * Shared-sync status, surfaced in Settings. `draft` (an in-progress count)
+ * is deliberately excluded from what gets synced — see firestore-sync.mjs.
+ */
+const sync = { active: false, ready: false, error: null };
+
+function sharedSnapshot() {
+  return { items: state.items, events: state.events, history: state.history, settings: state.settings };
+}
+
+function persistLocal() {
+  return repo.save({ ...sharedSnapshot(), draft: state.draft });
+}
+
+let pushTimer = null;
+/** Debounced so a burst of edits (typing a count) becomes one shared write. */
+function pushRemote() {
+  if (!sync.active) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => {
+    writeShared(sharedSnapshot()).catch(() => {
+      // Offline or unreachable — the local copy is already saved; this
+      // device reconciles on its next successful push or remote update.
+    });
+  }, 400);
+}
+
+const save = () => {
+  const result = persistLocal();
+  pushRemote();
+  return result;
+};
+
+function adoptRemote(remote) {
+  state.items = Array.isArray(remote.items) ? remote.items : [];
+  state.events = Array.isArray(remote.events) ? remote.events : [];
+  state.history = Array.isArray(remote.history) ? remote.history : [];
+  state.settings = remote.settings && typeof remote.settings === 'object' ? remote.settings : {};
+  persistLocal();
+  renderAll();
+}
+
+let sawFirstSnapshot = false;
+async function initSharedSync() {
+  try {
+    await subscribeShared((remote, meta) => {
+      if (!sawFirstSnapshot) {
+        sawFirstSnapshot = true;
+        sync.active = true;
+        sync.ready = true;
+        renderSettings();
+        if (remote) {
+          adoptRemote(remote);
+          toast('Synced with the shared inventory', 'success');
+        } else {
+          pushRemote(); // nothing shared yet on this bank — seed it from here
+        }
+        return;
+      }
+      if (meta.hasPendingWrites) return; // this device's own optimistic echo
+      if (remote) adoptRemote(remote);
+    }, error => {
+      sync.error = error?.message || 'Shared sync unavailable';
+      renderSettings();
+    });
+  } catch (error) {
+    sync.error = error?.message || 'Shared sync unavailable';
+    renderSettings();
+  }
+}
 
 async function boot() {
   const stored = await repo.load();
@@ -78,20 +142,18 @@ async function boot() {
     state.events = seed.events;
     state.history = seed.history;
     state.settings = seed.settings;
-    await save();
+    await persistLocal();
   }
   if (!state.draft.date) state.draft.date = isoDate();
 
   $('#count-date').value = state.draft.date;
   $('#report-start').value = state.ui.customStart;
   $('#report-end').value = state.ui.customEnd;
-  $('#storage-note').textContent = repo.name === 'memory'
-    ? 'Heads up: this browser blocked local storage (private mode?), so data will clear when you close the tab. Export a backup before you finish.'
-    : 'Storage in use: browser localStorage on this device.';
 
   renderAll();
   goToHash();
   registerServiceWorker();
+  initSharedSync();
 }
 
 const KNOWN_PAGES = ['home', 'inventory', 'count', 'reports', 'dni', 'activity', 'settings'];
@@ -804,6 +866,27 @@ function renderSettings() {
     { label: 'Counts logged', value: String(counts) },
     { label: 'Deliveries', value: String(restocks) },
   ].map(stat => `<article class="stat"><p class="eyebrow">${esc(stat.label)}</p><div><strong>${esc(stat.value)}</strong></div></article>`).join('');
+
+  const syncCard = $('#sync-card');
+  if (sync.active) {
+    syncCard.className = 'setting-card';
+    syncCard.querySelector('.setting-icon').textContent = '⇄';
+    syncCard.querySelector('strong').textContent = 'Synced live';
+    syncCard.querySelector('p').textContent = 'This inventory is shared — changes from any device appear here automatically.';
+  } else if (sync.error) {
+    syncCard.className = 'setting-card';
+    syncCard.querySelector('.setting-icon').className = 'setting-icon warn';
+    syncCard.querySelector('strong').textContent = 'Working locally only';
+    syncCard.querySelector('p').textContent = 'Shared sync is unreachable right now — your changes are saved on this device and will sync once it reconnects.';
+  } else {
+    syncCard.querySelector('.setting-icon').textContent = '⇄';
+    syncCard.querySelector('strong').textContent = 'Connecting to shared inventory…';
+    syncCard.querySelector('p').textContent = 'One moment — linking this device to the shared bank.';
+  }
+
+  $('#storage-note').textContent = repo.name === 'memory'
+    ? 'Heads up: this browser blocked local storage (private mode?), so nothing will be cached between visits if sync is ever unreachable.'
+    : `Local cache: browser localStorage on this device · Shared bank: ${sync.active ? 'connected' : (sync.error ? 'unreachable' : 'connecting')}.`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1270,6 +1353,10 @@ function importBackup(event) {
   reader.onload = () => {
     try {
       const data = parseBackup(String(reader.result));
+      const warning = sync.active
+        ? `Replace the SHARED inventory — for every device connected to it — with this backup's ${data.items.length} products? This cannot be undone.`
+        : `Replace this device's data with this backup's ${data.items.length} products?`;
+      if (!window.confirm(warning)) { event.target.value = ''; return; }
       state.items = data.items;
       state.events = data.events;
       state.history = data.history;
@@ -1290,7 +1377,10 @@ function importBackup(event) {
 }
 
 async function resetToSample() {
-  if (!window.confirm('Erase all local data and reload the sample inventory? Export a backup first if you need it.')) return;
+  const warning = sync.active
+    ? 'Erase the SHARED inventory — for every device connected to it — and reload the sample data? This cannot be undone. Export a backup first if you need one.'
+    : 'Erase all local data and reload the sample inventory? Export a backup first if you need it.';
+  if (!window.confirm(warning)) return;
   await repo.clear();
   const seed = buildSeedData();
   state.items = seed.items;
