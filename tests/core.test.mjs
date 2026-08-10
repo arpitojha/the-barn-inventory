@@ -528,6 +528,17 @@ test('consumptionByEvent rolls counts up per event and lists events with no coun
   assert.equal(founders.revenue, 0);
 });
 
+test('deleting an event drops it from consumptionByEvent even though its history remains', () => {
+  const withoutDelgado = consumptionByEvent(history, [
+    { id: 'e2', name: 'Founders Night', date: '2026-08-06' },
+  ]);
+  assert.equal(withoutDelgado.some(row => row.eventId === 'e1'), false);
+  assert.equal(withoutDelgado.length, 1);
+  // The underlying history entry is untouched — only the grouped-by-event view changes.
+  assert.equal(history[0].eventId, 'e1');
+  assert.equal(history[0].eventName, 'Delgado Wedding');
+});
+
 test('buildReport only counts activity inside the date range', () => {
   const report = buildReport({ items: items(), history, events: [], start: '2026-08-01', end: '2026-08-07' });
   assert.equal(report.counts, 2);

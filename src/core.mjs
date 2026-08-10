@@ -575,11 +575,19 @@ export function trendByDay(history = [], start, end) {
   return days;
 }
 
+/**
+ * Grouped by *currently existing* events only. A deleted event's counts
+ * still keep their eventName label in the raw activity log — this view
+ * just stops surfacing it as its own row, at any date range, once it's
+ * gone, rather than only hiding it from the count-context picker.
+ */
 export function consumptionByEvent(history = [], events = []) {
+  const validIds = new Set(events.map(event => String(event.id)));
   const map = new Map();
   for (const entry of history) {
     if (entry.type !== 'count' || !entry.eventId) continue;
     const key = String(entry.eventId);
+    if (!validIds.has(key)) continue;
     const row = map.get(key) || {
       eventId: entry.eventId,
       name: entry.eventName || 'Event',
