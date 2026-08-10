@@ -1172,7 +1172,8 @@ const MODALS = {
     },
     actions: () => `
       <button class="button outline" type="button" data-action="close-modal">Close</button>
-      <button class="button primary" type="button" data-action="export-event">Export CSV</button>`,
+      <button class="button primary" type="button" data-action="export-event">Export CSV</button>
+      <button class="button danger full" type="button" data-action="delete-event">Delete event</button>`,
   },
 };
 
@@ -1502,6 +1503,7 @@ const ACTIONS = {
   'edit-this': () => openModal('item', { item: modalContext.item }),
   'delete-item': () => deleteItem(),
   'export-event': () => exportEventCsv(modalContext.report),
+  'delete-event': () => deleteEvent(modalContext.report.eventId),
   'write-off': () => openModal('writeoff', {}),
   'use-dni': () => openModal('dniUse', {}),
   'writeoff-this': () => openModal('writeoff', { itemId: modalContext.item.id }),
@@ -1519,6 +1521,19 @@ function deleteItem() {
   closeModal();
   renderAll();
   toast(`${item.name} removed`, 'success');
+}
+
+function deleteEvent(eventId) {
+  const event = state.events.find(row => row.id === eventId);
+  if (!event) return;
+  if (!window.confirm(`Delete "${event.name}"? Counts already logged under it keep their history — it just won't be selectable for new counts.`)) return;
+  state.events = state.events.filter(row => row.id !== eventId);
+  if (state.draft.eventId === eventId) state.draft.eventId = '';
+  logEntry({ type: 'event', title: 'Event removed', note: event.name });
+  save();
+  closeModal();
+  renderAll();
+  toast(`${event.name} removed`, 'success');
 }
 
 function exportEventCsv(report) {
