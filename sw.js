@@ -1,12 +1,16 @@
 /**
  * Offline shell for The Barn.
  *
- * Strategy: precache the app shell on install, then serve navigations and
- * same-origin assets cache-first with a background refresh, so a bartender in
- * a basement cellar with no signal still gets the full app.
+ * Strategy: network-first for everything same-origin. Online, that means a
+ * relaunch always runs the code that's actually deployed — this app changes
+ * often, and a bartender silently running last week's build is worse than
+ * one extra network round-trip. Offline, every cached response here is the
+ * fallback, so the app (and its last-synced data) still opens with no
+ * signal. Bump VERSION on any deploy where stale code would matter more
+ * than usual — it forces every client to drop its old cache immediately.
  */
 
-const VERSION = 'barn-v2';
+const VERSION = 'barn-v3';
 const SHELL = [
   './',
   './index.html',
@@ -43,29 +47,23 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations: fall back to the cached shell when offline.
-  if (request.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(request);
+  // Network-first: always prefer what's actually deployed, cache is only
+  // the offline fallback. Navigations fall back to the shell page itself.
+  event.respondWith((async () => {
+    try {
+      const fresh = await fetch(request);
+      if (fresh && fresh.ok) {
         const cache = await caches.open(VERSION);
-        cache.put('./index.html', fresh.clone());
-        return fresh;
-      } catch {
+        cache.put(request, fresh.clone());
+      }
+      return fresh;
+    } catch {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      if (request.mode === 'navigate') {
         return (await caches.match('./index.html')) || (await caches.match('./')) || Response.error();
       }
-    })());
-    return;
-  }
-
-  event.respondWith((async () => {
-    const cached = await caches.match(request);
-    const network = fetch(request).then(response => {
-      if (response && response.ok) {
-        caches.open(VERSION).then(cache => cache.put(request, response.clone()));
-      }
-      return response;
-    }).catch(() => null);
-    return cached || (await network) || Response.error();
+      return Response.error();
+    }
   })());
 });
