@@ -341,6 +341,65 @@ export function applyCount(items = [], counts = {}, { partial = true } = {}) {
   return { items: updated, lines, totals };
 }
 
+/**
+ * Record usage directly instead of deriving it from a physical count — for
+ * an event where you know what was poured without re-counting the whole
+ * shelf. `usage` maps itemId -> amount used (not the new on-hand figure).
+ * Produces the same line/total shape as applyCount, so every report,
+ * export, and activity-log entry that reads a 'count' history entry works
+ * identically regardless of which flow produced it. `adjustment` is always
+ * 0 here — this flow has no way to represent "found extra product," only
+ * applyCount's physical-recount path does.
+ */
+export function applyUsage(items = [], usage = {}, { partial = true } = {}) {
+  const lines = [];
+  const totals = emptyTotals();
+
+  const updated = items.map(item => {
+    const key = String(item.id);
+    const raw = usage[key];
+    if (raw === undefined || raw === null || raw === '') {
+      if (partial) return item;
+      throw new ValidationError(`Usage is required for ${item.name}`, key);
+    }
+    const used = parseNonNegative(raw, `Usage for ${item.name}`, key);
+    const previous = Number(item.onHand) || 0;
+    if (used > previous) {
+      throw new ValidationError(
+        `Only ${quantityLabel(previous, item.unit)} on hand for ${item.name} — reduce the amount`, key);
+    }
+    const counted = previous - used;
+    const servings = servingsFrom(used, item);
+    const revenue = revenueFrom(used, item);
+    const cost = costFrom(used, item);
+
+    totals.usage[item.unit] += used;
+    totals.servings += servings;
+    totals.revenue += revenue;
+    totals.cost += cost;
+    totals.counted += 1;
+
+    lines.push({
+      itemId: item.id,
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      previous,
+      counted,
+      usage: used,
+      adjustment: 0,
+      servings,
+      revenue,
+      cost,
+    });
+
+    return { ...item, onHand: counted };
+  });
+
+  if (!lines.length) throw new ValidationError('Enter usage for at least one product before saving');
+  return { items: updated, lines, totals };
+}
+
 /** Receive a delivery: quantity is added to on-hand. Must be > 0. */
 export function applyRestock(items = [], itemId, quantity) {
   const amount = parsePositive(quantity, 'Quantity received', 'quantity');

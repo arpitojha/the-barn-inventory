@@ -12,7 +12,7 @@ import {
   isoDate, dateLabel, relativeLabel, shiftDays,
   inventoryValue, itemValue, totalsByUnit, stockRatio, isLowStock, isOutOfStock,
   lowStockItems, reorderQuantity, revenueFrom,
-  applyCount, applyRestock, applyAdjustment, rebaseBeginning,
+  applyCount, applyUsage, applyRestock, applyAdjustment, rebaseBeginning,
   applyWriteOff, applyDniUse, dniValue, dniItems,
   buildReport, buildBackup, parseBackup,
 } from './core.mjs';
@@ -34,7 +34,7 @@ const state = {
   events: [],
   history: [],
   settings: {},
-  draft: { counts: {}, eventId: '', date: isoDate() },
+  draft: { counts: {}, usage: {}, eventId: '', date: isoDate() },
   ui: {
     page: 'home',
     category: 'All',
@@ -43,6 +43,7 @@ const state = {
     countCategory: 'All',
     countSearch: '',
     prefill: false,
+    countMode: 'physical',
     dniCategory: 'All',
     dniSearch: '',
     range: 7,
@@ -135,7 +136,7 @@ async function boot() {
     state.events = stored.events || [];
     state.history = stored.history || [];
     state.settings = stored.settings || {};
-    state.draft = { counts: {}, eventId: '', date: isoDate(), ...(stored.draft || {}) };
+    state.draft = { counts: {}, usage: {}, eventId: '', date: isoDate(), ...(stored.draft || {}) };
   } else {
     const seed = buildSeedData();
     state.items = seed.items;
@@ -539,6 +540,14 @@ function renderCount() {
   select.value = state.draft.eventId || '';
   $('#count-date').value = state.draft.date || isoDate();
   $('#count-prefill').setAttribute('aria-pressed', String(state.ui.prefill));
+  $('#count-prefill').classList.toggle('hidden', state.ui.countMode !== 'physical');
+
+  $$('#count-mode-buttons button').forEach(button => {
+    button.classList.toggle('selected', button.dataset.mode === state.ui.countMode);
+  });
+  $('#count-hint').textContent = state.ui.countMode === 'usage'
+    ? "Enter how much of each product was used — no need to recount what's left. The app subtracts it from on-hand directly."
+    : 'Book amount is shown under each product. A lower count records usage; a higher count is logged as a positive adjustment, never negative usage. Leave a line blank to skip it.';
 
   const chips = ['All', ...CATEGORY_NAMES.filter(name => state.items.some(item => item.category === name))];
   $('#count-chips').innerHTML = chips
@@ -560,6 +569,8 @@ function renderCount() {
 }
 
 function countCardHtml(item) {
+  if (state.ui.countMode === 'usage') return usageCardHtml(item);
+
   const raw = state.draft.counts[item.id];
   const value = raw === undefined ? (state.ui.prefill ? item.onHand : '') : raw;
   const parsed = value === '' ? null : Number(value);
@@ -587,8 +598,38 @@ function countCardHtml(item) {
     </article>`;
 }
 
+function usageCardHtml(item) {
+  const raw = state.draft.usage[item.id];
+  const value = raw === undefined ? '' : raw;
+  const parsed = value === '' ? null : Number(value);
+  const onHand = Number(item.onHand) || 0;
+  const overLimit = parsed !== null && Number.isFinite(parsed) && parsed > onHand;
+  const valid = parsed !== null && Number.isFinite(parsed) && parsed >= 0 && !overLimit;
+
+  let deltaHtml = '';
+  if (overLimit) deltaHtml = `<span class="delta">Only ${fmt(onHand)} ${esc(unitLabel(item.unit, onHand))} on hand</span>`;
+  else if (valid && parsed > 0) deltaHtml = `<span class="delta use">Uses ${fmt(parsed)} ${esc(unitLabel(item.unit, parsed))} · ${money(revenueFrom(parsed, item), 0)} · leaves ${fmt(onHand - parsed)}</span>`;
+  else if (valid) deltaHtml = '<span class="delta">No usage</span>';
+
+  return `
+    <article class="count-card${value !== '' ? ' touched' : ''}" data-count-card="${esc(item.id)}">
+      <div>
+        <strong>${esc(item.name)}</strong>
+        <div class="book">On hand ${fmt(item.onHand)} ${esc(unitLabel(item.unit, item.onHand))} · ${esc(item.category)}</div>
+        ${deltaHtml}
+      </div>
+      <div class="count-field">
+        <label for="count-input-${esc(item.id)}">Used · ${esc(item.unit === OZ ? 'oz' : 'btl')}</label>
+        <input id="count-input-${esc(item.id)}" data-usage-input="${esc(item.id)}" type="number" inputmode="decimal"
+               min="0" step="0.1" placeholder="—" value="${value === '' ? '' : esc(value)}"
+               class="${parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || overLimit) ? 'invalid' : ''}" />
+      </div>
+    </article>`;
+}
+
 function updateCountProgress() {
-  const entries = Object.entries(state.draft.counts).filter(([, value]) => value !== '' && value !== undefined);
+  const draft = state.ui.countMode === 'usage' ? state.draft.usage : state.draft.counts;
+  const entries = Object.entries(draft).filter(([, value]) => value !== '' && value !== undefined);
   const total = state.items.length;
   let usageOz = 0;
   let usageBottles = 0;
@@ -597,14 +638,17 @@ function updateCountProgress() {
   for (const [id, value] of entries) {
     const item = state.items.find(row => String(row.id) === String(id));
     if (!item) continue;
-    const counted = Number(value);
-    if (!Number.isFinite(counted) || counted < 0) continue;
-    const used = Math.max(0, Number(item.onHand) - counted);
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) continue;
+    const used = state.ui.countMode === 'usage'
+      ? Math.min(number, Number(item.onHand) || 0)
+      : Math.max(0, Number(item.onHand) - number);
     if (item.unit === OZ) usageOz += used; else usageBottles += used;
     revenue += revenueFrom(used, item);
   }
 
-  $('#count-progress-label').textContent = `${entries.length} of ${total} counted`;
+  const verb = state.ui.countMode === 'usage' ? 'entered' : 'counted';
+  $('#count-progress-label').textContent = `${entries.length} of ${total} ${verb}`;
   $('#count-progress-bar').style.width = `${total ? (entries.length / total) * 100 : 0}%`;
   const parts = [];
   if (usageOz > 0) parts.push(`${fmt(usageOz)} oz`);
@@ -613,18 +657,20 @@ function updateCountProgress() {
 }
 
 function saveCount() {
-  const counts = {};
-  for (const [id, value] of Object.entries(state.draft.counts)) {
+  const isUsageMode = state.ui.countMode === 'usage';
+  const draft = isUsageMode ? state.draft.usage : state.draft.counts;
+  const values = {};
+  for (const [id, value] of Object.entries(draft)) {
     if (value === '' || value === undefined || value === null) continue;
-    counts[String(id)] = value;
+    values[String(id)] = value;
   }
-  if (!Object.keys(counts).length) {
-    toast('Enter at least one count before saving', 'error');
+  if (!Object.keys(values).length) {
+    toast(`Enter at least one ${isUsageMode ? 'usage amount' : 'count'} before saving`, 'error');
     return;
   }
 
   try {
-    const result = applyCount(state.items, counts);
+    const result = isUsageMode ? applyUsage(state.items, values) : applyCount(state.items, values);
     const event = state.events.find(row => String(row.id) === String(state.draft.eventId));
     const date = state.draft.date || isoDate();
     const at = date === isoDate() ? new Date().toISOString() : `${date}T20:00:00.000Z`;
@@ -633,15 +679,17 @@ function saveCount() {
     logEntry({
       type: 'count',
       date: at,
-      title: event ? `${event.name} — event count` : 'Daily count',
-      note: `${result.totals.counted} product${result.totals.counted === 1 ? '' : 's'} counted`,
+      title: event
+        ? `${event.name} — ${isUsageMode ? 'event usage' : 'event count'}`
+        : (isUsageMode ? 'Event usage' : 'Daily count'),
+      note: `${result.totals.counted} product${result.totals.counted === 1 ? '' : 's'} ${isUsageMode ? 'entered' : 'counted'}`,
       eventId: event?.id || null,
       eventName: event?.name || null,
       lines: result.lines.filter(line => line.usage > 0 || line.adjustment > 0),
       totals: result.totals,
     });
 
-    state.draft = { counts: {}, eventId: '', date: isoDate() };
+    state.draft = { counts: {}, usage: {}, eventId: '', date: isoDate() };
     save();
     renderAll();
     go('home');
@@ -650,7 +698,7 @@ function saveCount() {
     const bottles = result.totals.usage[BOTTLE];
     const summary = [oz > 0 ? `${fmt(oz)} oz` : '', bottles > 0 ? `${fmt(bottles)} bottles` : '']
       .filter(Boolean).join(' and ') || 'no usage';
-    toast(`Count saved — ${summary} consumed`, 'success');
+    toast(`${isUsageMode ? 'Event usage' : 'Count'} saved — ${summary} consumed`, 'success');
   } catch (error) {
     toast(error.message, 'error');
   }
@@ -1362,7 +1410,7 @@ function importBackup(event) {
       state.events = data.events;
       state.history = data.history;
       state.settings = data.settings;
-      state.draft = { counts: {}, eventId: '', date: isoDate() };
+      state.draft = { counts: {}, usage: {}, eventId: '', date: isoDate() };
       save();
       renderAll();
       go('home');
@@ -1388,7 +1436,7 @@ async function resetToSample() {
   state.events = seed.events;
   state.history = seed.history;
   state.settings = seed.settings;
-  state.draft = { counts: {}, eventId: '', date: isoDate() };
+  state.draft = { counts: {}, usage: {}, eventId: '', date: isoDate() };
   await save();
   renderAll();
   go('home');
@@ -1516,6 +1564,7 @@ function deleteItem() {
   if (!window.confirm(`Delete ${item.name}? Its past activity stays in the log.`)) return;
   state.items = state.items.filter(row => row.id !== item.id);
   delete state.draft.counts[item.id];
+  delete state.draft.usage[item.id];
   logEntry({ type: 'item', title: 'Product removed', note: item.name, lines: [{ itemId: item.id, name: item.name, unit: item.unit }] });
   save();
   closeModal();
@@ -1588,6 +1637,17 @@ document.addEventListener('click', event => {
   if (rangeButton) {
     state.ui.range = rangeButton.dataset.range === 'custom' ? 'custom' : Number(rangeButton.dataset.range);
     renderReports();
+    return;
+  }
+
+  const modeButton = target.closest('#count-mode-buttons button');
+  if (modeButton) {
+    state.ui.countMode = modeButton.dataset.mode;
+    const saveButton = $('#save-count-button');
+    saveButton.innerHTML = state.ui.countMode === 'usage'
+      ? 'Save event usage <span aria-hidden="true">→</span>'
+      : 'Save count &amp; calculate usage <span aria-hidden="true">→</span>';
+    renderCount();
     return;
   }
 
@@ -1690,6 +1750,48 @@ document.addEventListener('input', event => {
     return;
   }
 
+  const usageInput = target.closest('[data-usage-input]');
+  if (usageInput) {
+    const id = usageInput.dataset.usageInput;
+    const value = usageInput.value;
+    if (value === '') delete state.draft.usage[id];
+    else state.draft.usage[id] = value;
+
+    const item = state.items.find(row => String(row.id) === String(id));
+    const onHand = Number(item?.onHand) || 0;
+    const number = Number(value);
+    const overLimit = value !== '' && Number.isFinite(number) && number > onHand;
+    const invalid = value !== '' && (!Number.isFinite(number) || number < 0 || overLimit);
+    usageInput.classList.toggle('invalid', invalid);
+    usageInput.closest('.count-card')?.classList.toggle('touched', value !== '');
+
+    const card = usageInput.closest('.count-card');
+    const deltaSlot = card?.querySelector('.delta');
+    if (item && card) {
+      let html = '';
+      let className = 'delta';
+      if (overLimit) {
+        html = `Only ${fmt(onHand)} ${unitLabel(item.unit, onHand)} on hand`;
+      } else if (!invalid && value !== '') {
+        if (number > 0) { className = 'delta use'; html = `Uses ${fmt(number)} ${unitLabel(item.unit, number)} · ${money(revenueFrom(number, item), 0)} · leaves ${fmt(onHand - number)}`; }
+        else html = 'No usage';
+      } else if (invalid) {
+        html = 'Usage cannot be negative';
+      }
+      if (deltaSlot) { deltaSlot.className = className; deltaSlot.textContent = html; }
+      else if (html) {
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = html;
+        card.querySelector('div')?.appendChild(span);
+      }
+    }
+
+    updateCountProgress();
+    save();
+    return;
+  }
+
   if (target.id === 'report-start') { state.ui.customStart = target.value; state.ui.range = 'custom'; renderReports(); }
   if (target.id === 'report-end') { state.ui.customEnd = target.value; state.ui.range = 'custom'; renderReports(); }
 });
@@ -1717,6 +1819,7 @@ $('#low-stock-toggle').addEventListener('click', () => {
 });
 
 $('#count-prefill').addEventListener('click', () => {
+  if (state.ui.countMode !== 'physical') return;
   state.ui.prefill = !state.ui.prefill;
   if (state.ui.prefill) {
     for (const item of state.items) {

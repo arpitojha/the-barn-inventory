@@ -647,6 +647,7 @@ a { color: var(--forest); }
   border-radius: 13px;
   padding: 3px;
 }
+.segmented.two { grid-template-columns: repeat(2, 1fr); margin: 10px 0 14px; }
 .segmented button {
   padding: 9px 4px;
   border-radius: 10px;
@@ -655,6 +656,8 @@ a { color: var(--forest); }
   color: var(--muted);
 }
 .segmented button.selected { background: var(--card); color: var(--forest); box-shadow: var(--shadow-sm); }
+
+.hidden { display: none !important; }
 
 .custom-range { display: none; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
 .custom-range.show { display: flex; }

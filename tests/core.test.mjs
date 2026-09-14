@@ -8,7 +8,7 @@ import {
   itemValue, inventoryValue, totalsByUnit,
   stockRatio, isLowStock, isOutOfStock, lowStockItems, reorderQuantity,
   servingsFrom, revenueFrom, costFrom,
-  applyCount, applyRestock, applyAdjustment, rebaseBeginning,
+  applyCount, applyUsage, applyRestock, applyAdjustment, rebaseBeginning,
   applyWriteOff, applyDniUse, dniBalance, dniValue, dniItems,
   trendByDay, topConsumed, consumptionByEvent, consumptionByCategory, buildReport,
   buildBackup, parseBackup, isoDate, withinRange, shiftDays,
@@ -208,6 +208,71 @@ test('count errors identify the offending field', () => {
     assert.ok(error instanceof ValidationError);
     assert.equal(error.field, 'a');
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * Direct usage entry (event usage, instead of a physical recount)
+ * ------------------------------------------------------------------ */
+
+test('applyUsage subtracts the entered amount directly from on-hand', () => {
+  const result = applyUsage(items(), { a: 90 }); // 90 oz poured at the event
+  assert.equal(result.items[0].onHand, 30);
+  assert.equal(result.lines[0].usage, 90);
+  assert.equal(result.lines[0].previous, 120);
+  assert.equal(result.lines[0].counted, 30);
+  assert.equal(result.lines[0].adjustment, 0);
+  assert.equal(result.totals.usage[OZ], 90);
+  assert.equal(result.totals.servings, 60);
+  assert.equal(result.totals.revenue, 600);
+});
+
+test('applyUsage produces the same line/total shape as applyCount', () => {
+  const byUsage = applyUsage(items(), { a: 90 }).lines[0];
+  const byCount = applyCount(items(), { a: 30 }).lines[0]; // 120 - 90 = 30 remaining
+  assert.deepEqual(Object.keys(byUsage).sort(), Object.keys(byCount).sort());
+  assert.equal(byUsage.usage, byCount.usage);
+  assert.equal(byUsage.counted, byCount.counted);
+  assert.equal(byUsage.servings, byCount.servings);
+  assert.equal(byUsage.revenue, byCount.revenue);
+});
+
+test('applyUsage across multiple products totals per unit separately', () => {
+  const result = applyUsage(items(), { a: 90, b: 4, c: 100 });
+  assert.equal(result.totals.usage[OZ], 90);
+  assert.equal(result.totals.usage[BOTTLE], 104);
+  assert.equal(result.totals.counted, 3);
+});
+
+test('applyUsage cannot use more than what is on hand', () => {
+  assert.throws(() => applyUsage(items(), { a: 121 }), /Only 120 oz on hand/);
+});
+
+test('a negative or non-numeric usage amount is rejected', () => {
+  assert.throws(() => applyUsage(items(), { a: -1 }), /cannot be negative/);
+  assert.throws(() => applyUsage(items(), { a: 'lots' }), /must be a number/);
+});
+
+test('zero usage is valid and leaves on-hand unchanged', () => {
+  const result = applyUsage(items(), { a: 0 });
+  assert.equal(result.items[0].onHand, 120);
+  assert.equal(result.lines[0].usage, 0);
+});
+
+test('applyUsage is partial by default and leaves untouched items alone', () => {
+  const result = applyUsage(items(), { a: 90 });
+  assert.equal(result.lines.length, 1);
+  assert.equal(result.items[1].onHand, 12);
+  assert.equal(result.items[2].onHand, 292);
+});
+
+test('applyUsage never mutates the items it was given', () => {
+  const before = items();
+  applyUsage(before, { a: 90 });
+  assert.equal(before[0].onHand, 120);
+});
+
+test('an empty usage entry is rejected', () => {
+  assert.throws(() => applyUsage(items(), {}), /at least one product/);
 });
 
 /* ------------------------------------------------------------------ *

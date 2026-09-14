@@ -86,8 +86,13 @@
             <div>
               <p class="eyebrow">Physical count</p>
               <h1 id="count-title">Daily count</h1>
-              <p>Enter what is physically on hand. The difference becomes usage automatically.</p>
+              <p>Enter what is physically on hand, or switch to Event usage to log what was poured directly.</p>
             </div>
+          </div>
+
+          <div class="segmented two" id="count-mode-buttons" role="group" aria-label="How to enter this count">
+            <button data-mode="physical" class="selected">Physical count</button>
+            <button data-mode="usage">Event usage</button>
           </div>
 
           <div class="count-context">
@@ -104,7 +109,7 @@
             <input type="date" id="count-date" />
           </div>
 
-          <p class="count-hint">Book amount is shown under each product. A lower count records usage; a higher count is logged as a positive adjustment, never negative usage. Leave a line blank to skip it.</p>
+          <p class="count-hint" id="count-hint">Book amount is shown under each product. A lower count records usage; a higher count is logged as a positive adjustment, never negative usage. Leave a line blank to skip it.</p>
 
           <div class="toolbar">
             <label class="search">
@@ -125,7 +130,7 @@
           <div class="count-list" id="count-list"></div>
 
           <div class="sticky-save">
-            <button class="button primary wide" data-action="save-count">Save count &amp; calculate usage <span aria-hidden="true">→</span></button>
+            <button class="button primary wide" id="save-count-button" data-action="save-count">Save count &amp; calculate usage <span aria-hidden="true">→</span></button>
           </div>
         </section>
 
